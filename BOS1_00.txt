@@ -1,0 +1,1134 @@
+OBJECT Table 50050 Module
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    OnDelete=BEGIN
+               DeleteLines;
+             END;
+
+  }
+  FIELDS
+  {
+    { 1   ;   ;Module              ;Code20        ;CaptionML=ENU=Module;
+                                                   NotBlank=Yes }
+    { 2   ;   ;Description         ;Text50        ;CaptionML=ENU=Description }
+  }
+  KEYS
+  {
+    {    ;Module                                  ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    LOCAL PROCEDURE DeleteLines@1();
+    VAR
+      ModuleLines_LRec@1000 : Record 50051;
+    BEGIN
+      ModuleLines_LRec.SETRANGE(Module, Module);
+      IF NOT ModuleLines_LRec.ISEMPTY THEN
+        ModuleLines_LRec.DELETEALL(TRUE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Table 50051 Module Lines
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+  }
+  FIELDS
+  {
+    { 1   ;   ;Module              ;Code20        ;TableRelation=Module;
+                                                   OnValidate=BEGIN
+                                                                //"Line No." := GetNextLine;
+                                                              END;
+
+                                                   CaptionML=ENU=Module }
+    { 2   ;   ;Line No.            ;Integer       ;AutoIncrement=Yes;
+                                                   CaptionML=ENU=Line No. }
+    { 3   ;   ;Line Type           ;Option        ;InitValue=Codeunit;
+                                                   CaptionML=ENU=Line Type;
+                                                   OptionCaptionML=ENU=Group,Codeunit,Function;
+                                                   OptionString=Group,Codeunit,Function;
+                                                   Editable=No }
+    { 4   ;   ;Test Codeunit       ;Integer       ;TableRelation=IF (Line Type=CONST(Codeunit)) AllObjWithCaption."Object ID" WHERE (Object Type=CONST(Codeunit),
+                                                                                                                                     Object Subtype=CONST(Test));
+                                                   OnValidate=VAR
+                                                                AllObjWithCaption@1001 : Record 2000000058;
+                                                              BEGIN
+                                                                //IF "Test Codeunit" = 0 THEN
+                                                                //  EXIT;
+                                                                IF AllObjWithCaption.GET(AllObjWithCaption."Object Type"::Codeunit,"Test Codeunit") THEN
+                                                                  Name := AllObjWithCaption."Object Name";
+                                                              END;
+
+                                                   CaptionML=ENU=Test Codeunit }
+    { 5   ;   ;Name                ;Text128       ;OnValidate=VAR
+                                                                TestUnitNo@1000 : Integer;
+                                                              BEGIN
+                                                                CASE "Line Type" OF
+                                                                  "Line Type"::Group:;
+                                                                  "Line Type"::"Function":;
+                                                                  "Line Type"::Codeunit:
+                                                                    BEGIN
+                                                                      TESTFIELD(Name);
+                                                                      EVALUATE(TestUnitNo,Name);
+                                                                      VALIDATE("Test Codeunit",TestUnitNo);
+                                                                    END;
+                                                                END;
+                                                              END;
+
+                                                   CaptionML=ENU=Name;
+                                                   Editable=No }
+  }
+  KEYS
+  {
+    {    ;Module,Line No.                         ;Clustered=Yes }
+    {    ;Line No.                                 }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    LOCAL PROCEDURE GetNextLine@1() : Integer;
+    VAR
+      ModuleLine_LRec@1000 : Record 50051;
+    BEGIN
+      {
+      COMMIT;
+      SETCURRENTKEY("Line No.");
+      IF ModuleLine_LRec.FINDLAST THEN
+        EXIT(ModuleLine_LRec."Line No." + 1)
+      ELSE
+        EXIT(1)
+      }
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Table 50060 Published WebServices
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    DataPerCompany=No;
+  }
+  FIELDS
+  {
+    { 1   ;   ;Company             ;Code30         }
+    { 2   ;   ;Web Service         ;Text250        }
+    { 3   ;   ;Active              ;Boolean        }
+  }
+  KEYS
+  {
+    {    ;Company                                 ;Clustered=Yes }
+  }
+  FIELDGROUPS
+  {
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Codeunit 50000 MyPublishedCodeUnit
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      MyTestLine@1002 : Record 130401;
+      CALTestMgt@1001 : Codeunit 50001;
+      SelectCodeunitsToRunQst@1003 : TextConst '@@@={Locked};ENU=,Active &Codeunit,&All';
+      Mode@1007 : 'Test,Publish';
+      WindowUpdateDateTime@1006 : DateTime;
+      NoOfRecords@1005 : Integer;
+      DefaultTxt@1000 : TextConst '@@@={Locked};ENU=DEFAULT';
+      DefaultSuiteTxt@1010 : TextConst '@@@={Locked};ENU=Default Suite - Autogenerated';
+      CALTestSuite@1009 : Record 130400;
+      TxtResult@1008 : TextConst 'ENU=Result Total Time: %1 milliseconds, Total Success %2, Total Failure %3, Total Skipped %4, Total Not Executed %5';
+      TxtResult_02@1012 : TextConst 'ENU=%1 milliseconds';
+      Err001@1011 : TextConst 'ENU=Error: No Test Codeunits Found !';
+
+    PROCEDURE MgtHandler@10() outputstring : Text[250];
+    VAR
+      myTotTimeAsTxt@1000 : Text[250];
+      myTotSuccess@1001 : Integer;
+      myTotFailure@1002 : Integer;
+      myTotSkipped@1003 : Integer;
+      myTotNotExecuted@1004 : Integer;
+    BEGIN
+
+      LoadTestUnits('');
+
+      IF NOT MyTestLine.ISEMPTY THEN BEGIN
+        MyTestLine.MODIFYALL(MyTestLine.Result, MyTestLine.Result::" ");
+        MyTestLine.MODIFYALL(MyTestLine."First Error",'');
+        MyTestLine.MODIFYALL(MyTestLine."Start Time",0DT);
+        MyTestLine.MODIFYALL(MyTestLine."Finish Time",0DT);
+      END;
+      MyTestLine.RESET;
+
+      IF NOT MyTestLine.FINDFIRST THEN
+        EXIT(Err001);
+
+      COMMIT;
+
+      RunSuiteYesNo(MyTestLine);
+
+      myTotTimeAsTxt := GetTotalTimeUsed;
+      MyTestLine.CalcTestResults(myTotSuccess,myTotFailure,myTotSkipped,myTotNotExecuted);
+      outputstring := STRSUBSTNO(TxtResult, myTotTimeAsTxt, myTotSuccess, myTotFailure,myTotSkipped, myTotNotExecuted);
+      EXIT(outputstring);
+    END;
+
+    PROCEDURE TestHandler_with_Parameters@6(VAR InSuccess@1005 : Integer;VAR InFailure@1006 : Integer;VAR InSkipped@1007 : Integer;VAR InNotExecuted@1008 : Integer;InModuleFilter@1001 : Text[250]) outputstring : Text[250];
+    VAR
+      myTotTimeAsTxt@1000 : Text[250];
+    BEGIN
+
+      LoadTestUnits(InModuleFilter);
+
+      IF NOT MyTestLine.ISEMPTY THEN BEGIN
+        MyTestLine.MODIFYALL(MyTestLine.Result, MyTestLine.Result::" ");
+        MyTestLine.MODIFYALL(MyTestLine."First Error",'');
+        MyTestLine.MODIFYALL(MyTestLine."Start Time",0DT);
+        MyTestLine.MODIFYALL(MyTestLine."Finish Time",0DT);
+      END;
+      MyTestLine.RESET;
+
+      IF NOT MyTestLine.FINDFIRST THEN
+        EXIT(Err001);
+
+      COMMIT;
+
+      RunSuiteYesNo(MyTestLine);
+
+      myTotTimeAsTxt := GetTotalTimeUsed;
+      MyTestLine.CalcTestResults(InSuccess,InFailure,InSkipped,InNotExecuted);
+      outputstring := STRSUBSTNO(TxtResult_02, myTotTimeAsTxt);
+      EXIT(outputstring);
+    END;
+
+    LOCAL PROCEDURE RunSuiteYesNo@9(VAR CurrCALTestLine@1003 : Record 130401);
+    VAR
+      CALTestLine@1001 : Record 130401;
+      Selection@1005 : ',Function,Codeunit';
+      LineNoFilter@1000 : Text;
+    BEGIN
+      CALTestLine.COPY(CurrCALTestLine);
+      Selection := 3;
+
+      LineNoFilter := GetLineNoFilter(CALTestLine,Selection);
+      IF LineNoFilter <> '' THEN
+        CALTestLine.SETFILTER("Line No.",LineNoFilter);
+
+      RunSuite(CALTestLine,TRUE);
+    END;
+
+    LOCAL PROCEDURE RunSuite@8(VAR CALTestLine@1003 : Record 130401;IsTestMode@1004 : Boolean);
+    VAR
+      CALTestLine2@1002 : Record 130401;
+      CALTestRunner@1000 : Codeunit 50001;
+    BEGIN
+      IF IsTestMode THEN BEGIN
+        SETTESTMODE;
+        CALTestRunner.RUN(CALTestLine);
+      END;
+
+      CLEAR(CALTestRunner);
+    END;
+
+    LOCAL PROCEDURE GetLineNoFilter@31(CALTestLine@1000 : Record 130401;Selection@1003 : ',Function,Codeunit') LineNoFilter : Text;
+    VAR
+      NoOfFunctions@1002 : Integer;
+    BEGIN
+      LineNoFilter := '';
+      CASE Selection OF
+        Selection::"Function":
+          BEGIN
+            CALTestLine.TESTFIELD("Line Type",CALTestLine."Line Type"::"Function");
+            LineNoFilter := FORMAT(CALTestLine."Line No.");
+            CALTestLine.RESET;
+            CALTestLine.SETRANGE("Test Suite",CALTestLine."Test Suite");
+            CALTestLine.SETRANGE("Test Codeunit",CALTestLine."Test Codeunit");
+            CALTestLine.SETFILTER("Function",'OnRun|%1','');
+            CALTestLine.FINDSET;
+            REPEAT
+              LineNoFilter := LineNoFilter + '|' + FORMAT(CALTestLine."Line No.");
+            UNTIL CALTestLine.NEXT = 0;
+          END;
+        Selection::Codeunit:
+          LineNoFilter :=
+            STRSUBSTNO('%1..%2',CALTestLine.GetMinCodeunitLineNo,CALTestLine.GetMaxCodeunitLineNo(NoOfFunctions));
+      END;
+    END;
+
+    PROCEDURE SETPUBLISHMODE@1();
+    BEGIN
+      Mode := Mode::Publish;
+    END;
+
+    PROCEDURE SETTESTMODE@2();
+    BEGIN
+      Mode := Mode::Test;
+    END;
+
+    PROCEDURE ISPUBLISHMODE@3() : Boolean;
+    BEGIN
+      EXIT(Mode = Mode::Publish);
+    END;
+
+    PROCEDURE ISTESTMODE@4() : Boolean;
+    BEGIN
+      EXIT(Mode = Mode::Test);
+    END;
+
+    LOCAL PROCEDURE LoadTestUnits@5(InModuleFilter@1003 : Text[250]);
+    VAR
+      MyNewSuitName@1000 : Code[10];
+      ModuleLine_LRec@1001 : Record 50051;
+    BEGIN
+      MyNewSuitName := 'DEFAULT';
+      IF NOT CALTestSuite.GET(MyNewSuitName) THEN
+        CreateNewSuite(MyNewSuitName);
+
+      CALTestSuite.GET(MyNewSuitName);
+      IF InModuleFilter <> '' THEN
+        ModuleLine_LRec.SETFILTER(Module, RemovelastChr(InModuleFilter));
+      IF ModuleLine_LRec.FINDSET THEN
+        REPEAT
+          AddTestLine(CALTestSuite.Name,ModuleLine_LRec."Test Codeunit", GetNextLineNo(CALTestSuite.Name), ModuleLine_LRec.Module);
+        UNTIL ModuleLine_LRec.NEXT = 0;
+    END;
+
+    LOCAL PROCEDURE AddTestLine@20(TestSuiteName@1001 : Code[10];TestCodeunitId@1002 : Integer;LineNo@1000 : Integer;InModule@1007 : Code[10]);
+    VAR
+      CALTestLine@1003 : Record 130401;
+      AllObj@1004 : Record 2000000038;
+      Object@1005 : Record 2000000001;
+      CodeunitIsValid@1006 : Boolean;
+    BEGIN
+      WITH CALTestLine DO BEGIN
+        IF TestLineExists(TestSuiteName,TestCodeunitId) THEN
+          EXIT;
+
+        INIT;
+        VALIDATE("Test Suite",TestSuiteName);
+        VALIDATE("Line No.",LineNo);
+        VALIDATE("Line Type","Line Type"::Codeunit);
+        VALIDATE("Test Codeunit",TestCodeunitId);
+        VALIDATE(Run,TRUE);
+        Module := InModule;
+        INSERT(TRUE);
+
+        AllObj.SETRANGE("Object Type",AllObj."Object Type"::Codeunit);
+        AllObj.SETRANGE("Object ID",TestCodeunitId);
+        IF FORMAT(AllObj."App Package ID") <> '' THEN
+          CodeunitIsValid := TRUE;
+
+        IF NOT CodeunitIsValid THEN BEGIN
+          Object.SETRANGE(Type,Object.Type::Codeunit);
+          Object.SETRANGE(ID,TestCodeunitId);
+          CodeunitIsValid := Object.FINDFIRST;
+        END;
+
+        IF CodeunitIsValid THEN BEGIN
+          SETPUBLISHMODE;
+          SETRECFILTER;
+          CODEUNIT.RUN(CODEUNIT::"CAL Test Runner",CALTestLine);
+        END ELSE BEGIN
+          VALIDATE(Result,Result::Failure);
+          //VALIDATE("First Error",ObjectNotCompiledErr);
+          MODIFY(TRUE);
+        END;
+      END;
+    END;
+
+    LOCAL PROCEDURE GetLastTestLineNo@15(TestSuiteName@1001 : Code[10]) LineNo : Integer;
+    VAR
+      CALTestLine@1000 : Record 130401;
+    BEGIN
+      CALTestLine.SETRANGE("Test Suite",TestSuiteName);
+      IF CALTestLine.FINDLAST THEN
+        LineNo := CALTestLine."Line No.";
+    END;
+
+    LOCAL PROCEDURE CreateNewSuite@7(VAR NewSuiteName@1006 : Code[10]);
+    VAR
+      CALTestSuite@1001 : Record 130400;
+    BEGIN
+      WITH CALTestSuite DO BEGIN
+        NewSuiteName := DefaultTxt;
+        INIT;
+        VALIDATE(Name,NewSuiteName);
+        VALIDATE(Description, DefaultSuiteTxt);
+        VALIDATE(Export,FALSE);
+        INSERT(TRUE);
+      END;
+    END;
+
+    LOCAL PROCEDURE TestLineExists@17(TestSuiteName@1000 : Code[10];TestCodeunitId@1001 : Integer) : Boolean;
+    VAR
+      CALTestLine@1002 : Record 130401;
+    BEGIN
+      CALTestLine.SETRANGE("Test Suite",TestSuiteName);
+      CALTestLine.SETRANGE("Test Codeunit",TestCodeunitId);
+      EXIT(NOT CALTestLine.ISEMPTY);
+    END;
+
+    LOCAL PROCEDURE GetTotalTimeUsed@11() : Text;
+    VAR
+      CALTestLine_LRec@1000 : Record 130401;
+      myTotTime@1001 : Integer;
+    BEGIN
+      IF NOT CALTestLine_LRec.ISEMPTY THEN
+        REPEAT
+          myTotTime += CALTestLine_LRec."Finish Time" - CALTestLine_LRec."Start Time";
+        UNTIL CALTestLine_LRec.NEXT = 0;
+       EXIT(FORMAT(myTotTime));
+    END;
+
+    PROCEDURE GetNumberOfIncadaModuls@24() : Integer;
+    VAR
+      Module_LRec@1000 : Record 50050;
+    BEGIN
+      EXIT(Module_LRec.COUNT);
+    END;
+
+    PROCEDURE FillIncadeaModulesArray@12() myModuleStr : Text;
+    VAR
+      Module_LRec@1001 : Record 50050;
+      myTmpCount@1003 : Integer;
+      i@1004 : Integer;
+    BEGIN
+      Module_LRec.SETFILTER(Module, '<>%1', '');
+      myTmpCount := Module_LRec.COUNT;
+      IF Module_LRec.FINDSET(FALSE, FALSE) THEN
+        REPEAT
+          i += 1;
+          IF i = myTmpCount THEN
+            myModuleStr += Module_LRec.Module
+          ELSE
+            myModuleStr += Module_LRec.Module + ';';
+        UNTIL Module_LRec.NEXT = 0;
+      EXIT(myModuleStr);
+    END;
+
+    PROCEDURE FillIncadeaCompaniesArray@18() myCompanyStr : Text;
+    VAR
+      PublishedCompany_LRec@1001 : Record 50060;
+      myTmpCount@1003 : Integer;
+      i@1004 : Integer;
+    BEGIN
+      IF NOT PublishedCompany_LRec.FINDSET THEN
+        EXIT('');
+
+      myTmpCount := PublishedCompany_LRec.COUNT;
+      IF PublishedCompany_LRec.FINDSET(FALSE, FALSE) THEN
+        REPEAT
+          i += 1;
+          IF i = myTmpCount THEN
+            myCompanyStr += PublishedCompany_LRec.Company
+          ELSE
+            myCompanyStr += PublishedCompany_LRec.Company + ';';
+        UNTIL PublishedCompany_LRec.NEXT = 0;
+      EXIT(myCompanyStr);
+    END;
+
+    PROCEDURE GetSelectedURL@19(InCompany@1000 : Code[30]) : Text[250];
+    VAR
+      PublishedCompany_LRec@1001 : Record 50060;
+    BEGIN
+      IF PublishedCompany_LRec.GET(InCompany) THEN
+        EXIT(PublishedCompany_LRec."Web Service")
+      ELSE
+        EXIT('Could Not Find URL!')
+    END;
+
+    PROCEDURE RemovelastChr@13(VAR InModuleStr@1000 : Text[250]) myFilter : Text[250];
+    BEGIN
+      myFilter := DELCHR(InModuleStr, '>', '|');
+      InModuleStr := myFilter;
+    END;
+
+    PROCEDURE DeleteCALTestLines@14();
+    VAR
+      CALTestLine_LRec@1000 : Record 130401;
+    BEGIN
+      IF NOT CALTestLine_LRec.ISEMPTY THEN
+        CALTestLine_LRec.DELETEALL(TRUE);
+    END;
+
+    LOCAL PROCEDURE GetNextLineNo@16(InName@1000 : Code[10]) : Integer;
+    VAR
+      CALTestLine_LRec@1001 : Record 130401;
+    BEGIN
+      CALTestLine_LRec.SETRANGE("Test Suite", InName);
+      IF CALTestLine_LRec.FINDLAST THEN
+        EXIT(CALTestLine_LRec."Line No." + 10000)
+      ELSE
+        EXIT(100);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Codeunit 50001 MyPublished Test Runner
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    TableNo=130401;
+    Subtype=TestRunner;
+    TestIsolation=Codeunit;
+    OnRun=BEGIN
+            IF GLOBALLANGUAGE <> 1033 THEN
+              ERROR(LanguageErr);
+
+            IF CALTestSuite.GET("Test Suite") THEN BEGIN
+              CALTestLine.COPY(Rec);
+              CALTestLine.SETRANGE("Test Suite","Test Suite");
+              RunTests;
+            END;
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      CALTestSuite@1028 : Record 130400;
+      CALTestLine@1106000008 : Record 130401;
+      CALTestLineFunction@1000 : Record 130401;
+      CALTestMgt@1106000005 : Codeunit 130401;
+      LibraryRandom@1030 : Codeunit 130440;
+      CompanyWorkDate@1029 : Date;
+      TestRunNo@1027 : Integer;
+      MaxLineNo@1021 : Integer;
+      MinLineNo@1022 : Integer;
+      Filter@1001 : Text;
+      ExecutingTestsMsg@1003 : TextConst '@@@={Locked};ENU=Executing Tests...\';
+      TestSuiteMsg@1004 : TextConst '@@@={Locked};ENU=Test Suite    #1###################\';
+      TestCodeunitMsg@1012 : TextConst '@@@={Locked};ENU=Test Codeunit #2################### @3@@@@@@@@@@@@@\';
+      TestFunctionMsg@1013 : TextConst '@@@={Locked};ENU=Test Function #4################### @5@@@@@@@@@@@@@\';
+      NoOfResultsMsg@1005 : TextConst '@@@={Locked};ENU=No. of Results with:\';
+      WindowUpdateDateTime@1007 : DateTime;
+      WindowIsOpen@1006 : Boolean;
+      WindowTestSuite@1014 : Code[10];
+      WindowTestGroup@1010 : Text;
+      WindowTestCodeunit@1009 : Text;
+      WindowTestFunction@1008 : Text;
+      WindowTestSuccess@1015 : Integer;
+      WindowTestFailure@1016 : Integer;
+      WindowTestSkip@1017 : Integer;
+      SuccessMsg@1018 : TextConst '@@@={Locked};ENU="    Success   #6######\"';
+      FailureMsg@1019 : TextConst '@@@={Locked};ENU="    Failure   #7######\"';
+      SkipMsg@1020 : TextConst '@@@={Locked};ENU="    Skip      #8######\"';
+      WindowNoOfTestCodeunitTotal@1011 : Integer;
+      WindowNoOfFunctionTotal@1023 : Integer;
+      WindowNoOfTestCodeunit@1025 : Integer;
+      WindowNoOfFunction@1024 : Integer;
+      LanguageErr@1026 : TextConst 'ENU=You must change the language to English (US) before you run any test. The tests contain captions in English (US) and not the current language. If you do not change the language, tests will fail because they cannot find the text in English (US).';
+
+    LOCAL PROCEDURE RunTests@1106000002();
+    VAR
+      CALTestResult@1000 : Record 130405;
+      CodeCoverageMgt@1001 : Codeunit 9990;
+    BEGIN
+      WITH CALTestLine DO BEGIN
+        OpenWindow;
+        MODIFYALL(Result,Result::" ");
+        MODIFYALL("First Error",'');
+        COMMIT;
+        TestRunNo := CALTestResult.LastTestRunNo + 1;
+        CompanyWorkDate := WORKDATE;
+        Filter := GETVIEW;
+        WindowNoOfTestCodeunitTotal := CountTestCodeunitsToRun(CALTestLine);
+        SETRANGE("Line Type","Line Type"::Codeunit);
+        IF FIND('-') THEN
+          REPEAT
+            IF UpdateTCM THEN
+              CodeCoverageMgt.Start(TRUE);
+
+            MinLineNo := "Line No.";
+            MaxLineNo := GetMaxCodeunitLineNo(WindowNoOfFunctionTotal);
+            IF Run THEN
+              WindowNoOfTestCodeunit += 1;
+            WindowNoOfFunction := 0;
+
+            IF CALTestMgt.ISPUBLISHMODE THEN
+              DeleteChildren;
+
+            CODEUNIT.RUN("Test Codeunit");
+
+            IF UpdateTCM THEN BEGIN
+              CodeCoverageMgt.Stop;
+              CALTestMgt.ExtendTestCoverage("Test Codeunit");
+            END;
+          UNTIL NEXT = 0;
+
+        CloseWindow;
+      END;
+    END;
+
+    PROCEDURE OnBeforeTestRun@1102601000(CodeunitID@1102601000 : Integer;CodeunitName@1102601001 : Text[30];FunctionName@1102601002 : Text[128];FunctionTestPermissions@1102601003 : TestPermissions) : Boolean;
+    BEGIN
+      LibraryRandom.SetSeed(1);
+      APPLICATIONAREA('');
+      WORKDATE := CompanyWorkDate;
+      UpDateWindow(
+        CALTestLine."Test Suite",CALTestLine.Name,CodeunitName,FunctionName,
+        WindowTestSuccess,WindowTestFailure,WindowTestSkip,
+        WindowNoOfTestCodeunitTotal,WindowNoOfFunctionTotal,
+        WindowNoOfTestCodeunit,WindowNoOfFunction);
+
+      InitCodeunitLine;
+
+      IF FunctionName = '' THEN BEGIN
+        CALTestLine.Result := CALTestLine.Result::" ";
+        CALTestLine."Start Time" := CURRENTDATETIME;
+        EXIT(TRUE);
+      END;
+
+      IF CALTestMgt.ISPUBLISHMODE THEN
+        AddTestMethod(FunctionName)
+      ELSE BEGIN
+        IF NOT TryFindTestFunctionInGroup(FunctionName) THEN
+          EXIT(FALSE);
+
+        InitTestFunctionLine;
+        IF NOT CALTestLineFunction.Run OR NOT CALTestLine.Run THEN
+          EXIT(FALSE);
+
+        UpDateWindow(
+          CALTestLine."Test Suite",CALTestLine.Name,CodeunitName,FunctionName,
+          WindowTestSuccess,WindowTestFailure,WindowTestSkip,
+          WindowNoOfTestCodeunitTotal,WindowNoOfFunctionTotal,
+          WindowNoOfTestCodeunit,WindowNoOfFunction + 1);
+      END;
+
+      IF FunctionName = 'OnRun' THEN
+        EXIT(TRUE);
+      EXIT(CALTestMgt.ISTESTMODE);
+    END;
+
+    PROCEDURE OnAfterTestRun@1102601001(CodeunitID@1102601002 : Integer;CodeunitName@1102601001 : Text[30];FunctionName@1102601000 : Text[128];FunctionTestPermissions@1102601004 : TestPermissions;IsSuccess@1102601003 : Boolean);
+    BEGIN
+      IF (FunctionName <> '') AND (FunctionName <> 'OnRun') THEN
+        IF IsSuccess THEN
+          UpDateWindow(
+            WindowTestSuite,WindowTestGroup,WindowTestCodeunit,WindowTestFunction,
+            WindowTestSuccess + 1,WindowTestFailure,WindowTestSkip,
+            WindowNoOfTestCodeunitTotal,WindowNoOfFunctionTotal,
+            WindowNoOfTestCodeunit,WindowNoOfFunction)
+        ELSE
+          UpDateWindow(
+            WindowTestSuite,WindowTestGroup,WindowTestCodeunit,WindowTestFunction,
+            WindowTestSuccess,WindowTestFailure + 1,WindowTestSkip,
+            WindowNoOfTestCodeunitTotal,WindowNoOfFunctionTotal,
+            WindowNoOfTestCodeunit,WindowNoOfFunction);
+
+      UpdateCodeunitLine(IsSuccess);
+
+      IF FunctionName = '' THEN
+        EXIT;
+
+      UpdateTestFunctionLine(IsSuccess);
+      COMMIT;
+      APPLICATIONAREA('');
+      CLEARLASTERROR;
+    END;
+
+    PROCEDURE AddTestMethod@4(FunctionName@1000 : Text[128]);
+    BEGIN
+      WITH CALTestLineFunction DO BEGIN
+        CALTestLineFunction := CALTestLine;
+        "Line No." := MaxLineNo + 1;
+        "Line Type" := "Line Type"::"Function";
+        VALIDATE("Function",FunctionName);
+        Run := CALTestLine.Run;
+        "Start Time" := CURRENTDATETIME;
+        "Finish Time" := CURRENTDATETIME;
+        INSERT(TRUE);
+      END;
+      MaxLineNo := MaxLineNo + 1;
+    END;
+
+    PROCEDURE InitCodeunitLine@11();
+    BEGIN
+      WITH CALTestLine DO BEGIN
+        IF CALTestMgt.ISTESTMODE AND (Result = Result::" ") THEN
+          Result := Result::Skipped;
+        "Finish Time" := CURRENTDATETIME;
+        MODIFY;
+      END;
+    END;
+
+    PROCEDURE UpdateCodeunitLine@5(IsSuccess@1001 : Boolean);
+    BEGIN
+      WITH CALTestLine DO BEGIN
+        IF CALTestMgt.ISPUBLISHMODE AND IsSuccess THEN
+          Result := Result::" "
+        ELSE
+          IF Result <> Result::Failure THEN
+            IF IsSuccess THEN
+              Result := Result::Success
+            ELSE BEGIN
+              "First Error" := COPYSTR(GETLASTERRORTEXT,1,MAXSTRLEN("First Error"));
+              Result := Result::Failure
+            END;
+        "Finish Time" := CURRENTDATETIME;
+        MODIFY;
+      END;
+    END;
+
+    PROCEDURE InitTestFunctionLine@8();
+    BEGIN
+      WITH CALTestLineFunction DO BEGIN
+        "Start Time" := CURRENTDATETIME;
+        "Finish Time" := "Start Time";
+        Result := Result::Skipped;
+        MODIFY;
+      END;
+    END;
+
+    PROCEDURE UpdateTestFunctionLine@6(IsSuccess@1001 : Boolean);
+    VAR
+      CALTestResult@1000 : Record 130405;
+    BEGIN
+      WITH CALTestLineFunction DO BEGIN
+        IF IsSuccess THEN
+          Result := CALTestLine.Result::Success
+        ELSE BEGIN
+          "First Error" := COPYSTR(GETLASTERRORTEXT,1,MAXSTRLEN("First Error"));
+          Result := Result::Failure
+        END;
+        "Finish Time" := CURRENTDATETIME;
+        MODIFY;
+
+        CALTestResult.Add(CALTestLineFunction,TestRunNo);
+      END;
+    END;
+
+    PROCEDURE TryFindTestFunctionInGroup@9(FunctionName@1000 : Text[128]) : Boolean;
+    BEGIN
+      WITH CALTestLineFunction DO BEGIN
+        RESET;
+        SETVIEW(Filter);
+        SETRANGE("Test Suite",CALTestLine."Test Suite");
+        SETRANGE("Test Codeunit",CALTestLine."Test Codeunit");
+        SETRANGE("Function",FunctionName);
+        IF FIND('-') THEN
+          REPEAT
+            IF "Line No." IN [MinLineNo..MaxLineNo] THEN
+              EXIT(TRUE);
+          UNTIL NEXT = 0;
+        EXIT(FALSE);
+      END;
+    END;
+
+    PROCEDURE CountTestCodeunitsToRun@7(VAR CALTestLine@1000 : Record 130401) NoOfTestCodeunits : Integer;
+    BEGIN
+      IF NOT CALTestMgt.ISTESTMODE THEN
+        EXIT;
+
+      WITH CALTestLine DO BEGIN
+        SETRANGE("Line Type","Line Type"::Codeunit);
+        SETRANGE(Run,TRUE);
+        NoOfTestCodeunits := COUNT;
+      END;
+    END;
+
+    PROCEDURE UpdateTCM@1() : Boolean;
+    BEGIN
+      EXIT(CALTestMgt.ISTESTMODE AND CALTestSuite."Update Test Coverage Map");
+    END;
+
+    LOCAL PROCEDURE OpenWindow@59();
+    BEGIN
+      IF NOT CALTestMgt.ISTESTMODE THEN
+        EXIT;
+
+      {
+      Window.OPEN(
+        ExecutingTestsMsg +
+        TestSuiteMsg +
+        TestCodeunitMsg +
+        TestFunctionMsg +
+        NoOfResultsMsg +
+        SuccessMsg +
+        FailureMsg +
+        SkipMsg);
+      WindowIsOpen := TRUE;
+      }
+    END;
+
+    LOCAL PROCEDURE UpDateWindow@31(NewWindowTestSuite@1000 : Code[10];NewWindowTestGroup@1004 : Text;NewWindowTestCodeunit@1003 : Text;NewWindowTestFunction@1001 : Text;NewWindowTestSuccess@1006 : Integer;NewWindowTestFailure@1005 : Integer;NewWindowTestSkip@1002 : Integer;NewWindowNoOfTestCodeunitTotal@1010 : Integer;NewWindowNoOfFunctionTotal@1009 : Integer;NewWindowNoOfTestCodeunit@1008 : Integer;NewWindowNoOfFunction@1007 : Integer);
+    BEGIN
+      IF NOT CALTestMgt.ISTESTMODE THEN
+        EXIT;
+
+
+      WindowTestSuite := NewWindowTestSuite;
+      WindowTestGroup := NewWindowTestGroup;
+      WindowTestCodeunit := NewWindowTestCodeunit;
+      WindowTestFunction := NewWindowTestFunction;
+      WindowTestSuccess := NewWindowTestSuccess;
+      WindowTestFailure := NewWindowTestFailure;
+      WindowTestSkip := NewWindowTestSkip;
+
+      WindowNoOfTestCodeunitTotal := NewWindowNoOfTestCodeunitTotal;
+      WindowNoOfFunctionTotal := NewWindowNoOfFunctionTotal;
+      WindowNoOfTestCodeunit := NewWindowNoOfTestCodeunit;
+      WindowNoOfFunction := NewWindowNoOfFunction;
+      {
+      IF IsTimeForUpdate THEN BEGIN
+        IF NOT WindowIsOpen THEN
+          OpenWindow;
+        Window.UPDATE(1,WindowTestSuite);
+        Window.UPDATE(2,WindowTestCodeunit);
+        Window.UPDATE(4,WindowTestFunction);
+        Window.UPDATE(6,WindowTestSuccess);
+        Window.UPDATE(7,WindowTestFailure);
+        Window.UPDATE(8,WindowTestSkip);
+
+        IF NewWindowNoOfTestCodeunitTotal <> 0 THEN
+          Window.UPDATE(3,ROUND(NewWindowNoOfTestCodeunit / NewWindowNoOfTestCodeunitTotal * 10000,1));
+        IF NewWindowNoOfFunctionTotal <> 0 THEN
+          Window.UPDATE(5,ROUND(NewWindowNoOfFunction / NewWindowNoOfFunctionTotal * 10000,1));
+      END;
+      }
+    END;
+
+    LOCAL PROCEDURE CloseWindow@2();
+    BEGIN
+      IF NOT CALTestMgt.ISTESTMODE THEN
+        EXIT;
+      {
+      IF WindowIsOpen THEN BEGIN
+        Window.CLOSE;
+        WindowIsOpen := FALSE;
+      END;
+      }
+    END;
+
+    LOCAL PROCEDURE IsTimeForUpdate@69() : Boolean;
+    BEGIN
+      IF TRUE IN [WindowUpdateDateTime = 0DT,CURRENTDATETIME - WindowUpdateDateTime >= 1000] THEN BEGIN
+        WindowUpdateDateTime := CURRENTDATETIME;
+        EXIT(TRUE);
+      END;
+      EXIT(FALSE);
+    END;
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Codeunit 50010 Inc. Service Order Test
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    Subtype=Test;
+    OnRun=BEGIN
+          END;
+
+  }
+  CODE
+  {
+    VAR
+      Cust@1000 : Record 18;
+
+    [Test]
+    PROCEDURE TestServiceOrderMgt@1();
+    BEGIN
+      //Cust.GET('X5QyTrym');
+    END;
+
+    [Test]
+    PROCEDURE CreateServiceOrder@2();
+    BEGIN
+    END;
+
+    [Test]
+    PROCEDURE ModifyServiceOrder@3();
+    BEGIN
+    END;
+
+    [Test]
+    PROCEDURE DeleteServiceOrder@4();
+    BEGIN
+    END;
+
+    [Test]
+    PROCEDURE PostServiceOrder@5();
+    BEGIN
+    END;
+
+    BEGIN
+    {
+      TestRunnner will run all functions in CU with property FunctionType = TEST
+    }
+    END.
+  }
+}
+
+OBJECT Page 50050 Modules
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50050;
+    PageType=Card;
+  }
+  CONTROLS
+  {
+    { 1   ;0   ;Container ;
+                ContainerType=ContentArea }
+
+    { 2   ;1   ;Group     ;
+                Name=Group;
+                GroupType=Group }
+
+    { 3   ;2   ;Field     ;
+                SourceExpr=Module }
+
+    { 4   ;2   ;Field     ;
+                SourceExpr=Description }
+
+    { 5   ;1   ;Part      ;
+                SubPageView=SORTING(Module,Line No.);
+                SubPageLink=Module=FIELD(Module);
+                PagePartID=Page50051;
+                PartType=Page }
+
+    { 7   ;0   ;Container ;
+                ContainerType=FactBoxArea }
+
+    { 6   ;1   ;Part      ;
+                PartType=System;
+                SystemPartID=Notes }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 50051 Modules Line Sub
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50051;
+    PageType=ListPart;
+  }
+  CONTROLS
+  {
+    { 1   ;0   ;Container ;
+                ContainerType=ContentArea }
+
+    { 2   ;1   ;Group     ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 3   ;2   ;Field     ;
+                SourceExpr=Module }
+
+    { 5   ;2   ;Field     ;
+                SourceExpr="Line Type" }
+
+    { 6   ;2   ;Field     ;
+                SourceExpr="Test Codeunit" }
+
+    { 7   ;2   ;Field     ;
+                SourceExpr=Name }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 50052 Module list
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    SourceTable=Table50050;
+    PageType=List;
+    CardPageID=Modules;
+  }
+  CONTROLS
+  {
+    { 1   ;0   ;Container ;
+                ContainerType=ContentArea }
+
+    { 2   ;1   ;Group     ;
+                Name=Group;
+                GroupType=Repeater }
+
+    { 3   ;2   ;Field     ;
+                SourceExpr=Module }
+
+    { 4   ;2   ;Field     ;
+                SourceExpr=Description }
+
+  }
+  CODE
+  {
+
+    BEGIN
+    END.
+  }
+}
+
+OBJECT Page 50060 MyPublished Test Code_
+{
+  OBJECT-PROPERTIES
+  {
+    Date=01.11.17;
+    Time=12.00.00;
+    Version List=BOS1.00;
+  }
+  PROPERTIES
+  {
+    PageType=Card;
+    ActionList=ACTIONS
+    {
+      { 2       ;    ;ActionContainer;
+                      Name=Test;
+                      ActionContainerType=ActionItems }
+      { 3       ;1   ;Action    ;
+                      CaptionML=ENU=Push Me;
+                      Promoted=Yes;
+                      Image=Action;
+                      OnAction=BEGIN
+                                 //MyPublishedCode.RUN;
+                                 //MESSAGE('%1',MyPublishedCode.MgtHandler);
+                                 //MESSAGE('%1', MyPublishedCode.GetNumberOfIncadaModuls());
+                                 //myStr := MyPublishedCode.FillIncadeaModulesArray;
+                                 myStr := 'SERVICE|STDNAV|';
+                                 MESSAGE('%1', myStr);
+
+                                 MyResponse := MyPublishedCode.TestHandler_with_Parameters(
+                                                 InSuccess, InFailure, InSkipped,
+                                                 InNotExcuted, myStr);
+
+                                 MESSAGE('%1', MyResponse);
+                                 //MESSAGE('%1', MyPublishedCode.RemovelastChr(myStr));
+                               END;
+                                }
+      { 4       ;1   ;Action    ;
+                      CaptionML=ENU=TEst Again;
+                      OnAction=VAR
+                                 myFilter@1000 : Code[20];
+                               BEGIN
+                                 myFilter := 'SERVICE|STDNAV';
+                                 myModule.SETFILTER(Module, myFilter);
+                                 //myModule.SETRANGE(Module, myFilter);
+                                 MESSAGE('%1', myModule.COUNT);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1   ;0   ;Container ;
+                ContainerType=ContentArea }
+
+  }
+  CODE
+  {
+    VAR
+      MyPublishedCode@1000 : Codeunit 50000;
+      myStr@1001 : Text;
+      MyResponse@1002 : Text;
+      InSuccess@1003 : Integer;
+      InFailure@1004 : Integer;
+      InSkipped@1005 : Integer;
+      InNotExcuted@1006 : Integer;
+      myModule@1007 : Record 50050;
+
+    BEGIN
+    END.
+  }
+}
+
